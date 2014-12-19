@@ -1,79 +1,142 @@
 package wiki;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.sql.Time;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.Hashtable;
 import java.util.List;
 import java.util.regex.*;
+
+import javax.naming.spi.DirectoryManager;
 
 import test.Testing;
 
 
 public class executing {
 
-	static String strPagesWikiFile;
-	static String strTypesFile;
+	/**counting variables for statistics*/
+	static int allLiks;
+	static int abstractsFound;
+	static int abstractsNotFound;
+	static int typesFound;
+	static int typesNotFound;
+	
+	/**wiki pages temp files - list of filepaths*/
+	static List<Path> strPagesWiki;
+	/**hashtable - pairs - title of wiki page (key), path to file, where page ist stored (value)*/
+	static Hashtable<String,String> titleWikiPages;
+	/**file with abstracts from sk dbpedia*/
+	static String strAbstractsFile;
 	
 	public static void main(String[] args) {
 		try
 		{
-		//open file with articles
-		Path fileWiki = Paths.get("../../../data/sample_skwiki-latest-pages-articles.xml");
-		//Path fileWiki = Paths.get("../../../data/skwiki-latest-pages-articles.xml");
-		byte[] fileArray;
-		fileArray = Files.readAllBytes(fileWiki);
-		strPagesWikiFile = new String(fileArray, "UTF-8");
-		
-		//open file with articles
-		Path fileTypes = Paths.get("../../../data/instance_types_sk.ttl");
-		fileArray = Files.readAllBytes(fileTypes);
-		strTypesFile = new String(fileArray, "UTF-8");
+			//init variables for statistics
+			allLiks=0;
+			abstractsFound=0;
+			abstractsNotFound=0;
+			typesFound=0;
+			typesNotFound=0;
+			
+			//init paths
+			String abstractsFilePath = "";
+			String pagesFilePath="";
+			if(args.length>0)
+			{
+				pagesFilePath = args[0];
+				abstractsFilePath = args[1];
+			}
+			else 
+			{
+				pagesFilePath ="data/skwiki-latest-pages-articles.xml";
+				abstractsFilePath="data/short_abstracts_sk.ttl";
+			}
+			
+			//byte array to load file contents
+			byte[] fileArray;
+			
+			//open file with abstracts
+			Path fileTypes = Paths.get(abstractsFilePath);
+			fileArray = Files.readAllBytes(fileTypes);
+			strAbstractsFile = new String(fileArray, "UTF-8");
+			
+			//open file with articles
+			//Path fileWiki = Paths.get("C:/Users/Domi/workspace/WikiParser/data/sample_skwiki-latest-pages-articles.xml");
+			//Path fileWiki = Paths.get("C:/Users/Domi/workspace/WikiParser/data/skwiki-latest-pages-articles.xml");
+			//strPagesWiki = inputPreprocessing("C:/Users/Domi/workspace/WikiParser/data/sample_skwiki-latest-pages-articles.xml");
+			strPagesWiki = inputPreprocessing(pagesFilePath);
+			//System.out.println(Boolean.toString(Testing.testParsedInput(strPagesWiki.toArray(new Path[strPagesWiki.size()]))));
+			
+			System.out.println("processing start");
+			long start = (new Date()).getTime();
 
-		//just one sentence or now. Later there will be whole text read from articles
-		//String sentence ="Medzi filozofov bežne spájaných s empirizmom patria tiež [[Aristoteles]], [[Tomáš Akvinský]], [[Francis Bacon]], [[Thomas Hobbes]], [[John Locke]], [[David Hume]] a [[John Stuart Mill]].";
-		String sentence1 = "Spomedzi stredovekej [[Scholastika (filozofia)|scholastiky]], [[Tomáš Akvinský]] tvrdí, že existencia Boha môže byt overitelná zmyslovým pozorovaním. Používa Aristotelovu myšlienku &quot;aktívneho intelektu&quot;, ktorá je interpretovaná ako schopnost abstraktne a všeobecne uvažovat z ciastocne empirických informácií.";
-		String sentence4 = "'''Subjektívny idealizmus''' je [[filozofický smer]], ktorého predstavitelia odmietajú oprávnenost tézy o existencii [[objektívna realita|objektívnej reality]] [[Platón]]ovej.";
-		String sentence2 = "'''Konfucianizmus''' = '''konfuciánstvo''' je [[filozofický smer]] - jedna z dvoch vetví osobitného [[Čína (civilizácia)|čínskeho]] polonáboženského kultu univerza a obcianskych cností; prúd cínskej filozofie spájaný s osobou [[Konfucius|Konfucia]], ktorý už nezastáva vieru vo viacerých bohov, vyhýba sa metafyzickým otázkam, pestuje skôr obciansky kult a moralistné normovanie vlastností užitocných pre štát.";
-		String sentence3 = "Svoju teóriu rozvinul v reakcii na [[John Locke|Lockeov]] [[materializmus]]";
-		
-		List<Sentence> parsedSentences = new ArrayList<Sentence>();
-		
-		//for each sentence will be done following
-		Sentence oneSent1 = new Sentence();
-		oneSent1.setFullSent(sentence1);
-		oneSent1.setLinks(getLinks(sentence1));		
-		parsedSentences.add(oneSent1);
-		
-		Sentence oneSent2 = new Sentence();
-		oneSent2.setFullSent(sentence2);
-		oneSent2.setLinks(getLinks(sentence2));
-		parsedSentences.add(oneSent2);
-		
-		Sentence oneSent3 = new Sentence();
-		oneSent3.setFullSent(sentence3);
-		oneSent3.setLinks(getLinks(sentence3));
-		parsedSentences.add(oneSent3);
-		
-		Sentence oneSent4 = new Sentence();
-		oneSent4.setFullSent(sentence4);
-		oneSent4.setLinks(getLinks(sentence4));
-		parsedSentences.add(oneSent4);
-		
-		
-		String output = getOutput(parsedSentences);
-		Path file = Paths.get("../../../data/output1.xml");
-		//Path file = Paths.get("../../../data/sample_output_parsed_sentences_and_links.xml");
-		byte[] buf = output.getBytes("UTF-8");
-		Files.write(file, buf);
+			for(int fileId=0;fileId<strPagesWiki.size();fileId++)
+			{
+				fileArray = Files.readAllBytes(strPagesWiki.get(fileId));
+				//one wiki page loaded
+				String currentPage = new String(fileArray, "UTF-8");
+				//list of input sentences
+				String[] currentPageLines = currentPage.split("\\r\\n");
+				
+				List<Sentence> parsedSentences = new ArrayList<Sentence>();
+				
+				//sentences start from id=3
+				for(int sentId=3;sentId<currentPageLines.length;sentId++)
+				{
+					String s = currentPageLines[sentId];
+					//for each sentence will be done following
+					Sentence oneSent1 = new Sentence();
+					oneSent1.setFullSent(s);
+					oneSent1.setLinks(getLinks(s));	
+					allLiks+=oneSent1.getLinks().size();
+					if(oneSent1.getLinks().size()>0)
+						parsedSentences.add(oneSent1);
+				}
 
-		System.out.println("Unit test results: ");
-		System.out.println("Structure test - " + Boolean.toString(Testing.unitTestStructure(output)));
-		System.out.println("Content test - " + Boolean.toString(Testing.unitTestContent(output)));
+				if(parsedSentences.size()>0)
+				{
+					String output = getOutput(parsedSentences);
+					Path file = Paths.get(strPagesWiki.get(fileId).toString().replace("input","output"));
+					//Path file = Paths.get("C:/Users/Domi/workspace/WikiParser/data/output1.xml");
+					byte[] buf = output.getBytes("UTF-8");
+					Files.write(file, buf);
+				}
+			}
+			
+			long end = (new Date()).getTime();
+			System.out.println("processing end");
+			
+			double spanMS = end-start;
+			double minutes = spanMS/60000;
+			double seconds = (minutes - Math.round(minutes)) * 60;
+			System.out.print(Math.round(minutes));
+			System.out.print(" min ");
+			System.out.print(seconds);
+			System.out.println(" seconds processing");
+			
+		//System.out.println("Unit test results: ");
+		//System.out.println("Structure test - " + Boolean.toString(Testing.unitTestStructure(output)));
+		//System.out.println("Content test - " + Boolean.toString(Testing.unitTestContent(output)));
 		
-		
+		//write statistics
+			String stats = "all links: " + Integer.toString(allLiks)+"\r\n";
+			stats += "typesFound: " + Integer.toString(typesFound)+"\r\n";
+			stats += "types not found: " + Integer.toString(typesNotFound)+"\r\n";
+			stats += "abstracts found: " + Integer.toString(abstractsFound)+"\r\n";
+			stats += "abstracts not found: " + Integer.toString(abstractsNotFound)+"\r\n\r\n";
+			stats += "Duration " + Long.toString(Math.round(minutes)) + " minutes " + Double.toString(seconds) + " seconds\r\n";
+			
+			saveAsFile(stats, "data/statistics.txt");
 		}
 		catch (IOException e) {
 			// TODO Auto-generated catch block
@@ -85,8 +148,9 @@ public class executing {
 	/**
 	 * gets all links marked as [[..]] from string sentence
 	 * returns List<String>
+	 * @throws IOException 
 	 * */
-	public static List<Link> getLinks(String sentence)
+	public static List<Link> getLinks(String sentence) throws IOException
 	{
 		List<Link> result = new ArrayList<Link>();
 		
@@ -107,197 +171,73 @@ public class executing {
 		
 		for(Link l:result)
 		{
-			getLinkType(l);
-			getLinkText(l);
-			if(l.getType()==null || l.getType()=="")
-				getLinkTypeFromInfobox(l);
-			getLinkAbstract(l);
+			String linkFilePath = getLinkFile(l);
+			if(linkFilePath!=null && linkFilePath!="")
+			{
+				byte[] pom = Files.readAllBytes(Paths.get(linkFilePath));
+				String linkFileContent = new String(pom,"UTF-8");
+				
+				if(l.getType()==null || l.getType()=="")
+					getLinkTypeFromInfobox(l, linkFileContent);
+				getLinkAbstract(l, linkFileContent);
+				l.setSyntax("Atr");
+				
+				//statistics
+				if(l.getType()=="")
+					typesNotFound++;
+				else
+					typesFound++;
+				
+				if(l.getArticleAbstract()=="")
+					abstractsNotFound++;
+				else
+					abstractsFound++;
+			}
 		}
 		
 		return result;
 	}
 	
-	public static void getLinkType(Link l)
+	/**gets a temp file of a link (by its lemma)*/
+	private static String getLinkFile(Link l)
 	{
-		String linkType = "";
-		
-		//pattern to match db link in Types file
-		Pattern p = Pattern.compile("<{1}" + l.getDbLnk() + ">{1}.*\\.");
-		Matcher m = p.matcher(strTypesFile);
-
-		while (m.find()) {
-			String strLineFound = m.group();
-			String[] parts = strLineFound.split("> <");
-			if(parts.length==3)
-			{
-				String typeLink = parts[2];
-				String[] splittedType = typeLink.split("/");
-				linkType += splittedType[splittedType.length-1].replace("> .", ", ");
-			}
-		}
-		
-		//remove final ", "
-		if(linkType.endsWith(", "))
-		{
-			linkType = linkType.substring(0,linkType.length()-3);
-		}
-		l.setType(linkType);
+		return titleWikiPages.get(l.getLemma());
 	}
-
-	/**finds infobox in age text and marks infobox beginning line and end line
+	
+	
+	/**finds infobox in linkFileContent and sets a type from it
 	 * */
-	public static void getLinkTypeFromInfobox(Link l)
+	public static void getLinkTypeFromInfobox(Link l, String linkFileContent)
 	{
 		String linkType = "";
-		
-		
-		//String[] lines = strPagesWikiFile.split("\\r\\n");
-		String[] lines = l.getText().split("\\r\\n");
-		
-		Pattern pInfobox = Pattern.compile("\\{\\{Infobox");
-		String strInfoboxEnd = "}}";
-		Boolean infoboxFound = false;
-		
-		String infoboxLine = "";
-		
-		for(int i=0;i<lines.length;i++)
-		{
-			if(!infoboxFound)
-			{
-				Matcher m = pInfobox.matcher(lines[i]);
-				String strInfoboxFound = "";			
-				while (m.find()) {
-					strInfoboxFound = m.group();
-				}
-				if(strInfoboxFound!="")
-				{
-					infoboxLine = lines[i];
-					l.setInfoboxStartLine(i);
-					infoboxFound=true;
-				}
-			}
-			else
-			{
-				if(lines[i].trim().equals(strInfoboxEnd))
-				{
-					l.setInfoboxEndLine(i);
-					break;
-				}
-			}
-				
-		}
-		
-		if(infoboxLine!="")
-		{
-			String[] splittedIB = infoboxLine.split("\\s");
-			linkType = splittedIB[splittedIB.length-1];
-		}
+		linkType = linkFileContent.split("\\r\\n")[1];
+		linkType = linkType.replace("INFOBOX: ", "").trim();
 		l.setType(linkType);
 	}
 	
 	/**finds abstract in page text content
 	 * */
-	public static void getLinkAbstract(Link l)
+	public static void getLinkAbstract(Link l, String linkFileContent)
 	{
-		String strAbstract = "";		
+
+		String linkAbstract = "";
 		
-		//String[] lines = strPagesWikiFile.split("\\r\\n");
-		String[] lines = l.getText().split("\\r\\n");
-		
-		Pattern pSection = Pattern.compile("== ");
-		Boolean newSectionFound = false;
-		
-		for(int i=l.getInfoboxEndLine()+1;i<lines.length;i++)
-		{
-			if(!newSectionFound)
+		//pattern to match db link in Types file
+		Pattern p = Pattern.compile("<{1}" + l.getDbLnk() + ">{1}.*\\.");
+		Matcher m = p.matcher(strAbstractsFile);
+
+		while (m.find()) {
+			String strLineFound = m.group();
+			String[] parts = strLineFound.split(" <http://www.w3.org/2000/01/rdf-schema#comment> ");
+			if(parts.length==2)
 			{
-				Matcher m = pSection.matcher(lines[i]);
-				while (m.find()) {
-					newSectionFound = true;
-				}
-				if(!newSectionFound)
-				{
-					strAbstract += lines[i] + "\r\n";
-				}
-			}
-			else
-			{
-				break;
-			}
-				
-		}
-		
-		l.setArticleAbstract(strAbstract.replaceAll("\r\n", " "));
-	}
-	
-	/**gets element text from a page, the link refers to  
-	 * */
-	public static void getLinkText(Link l)
-	{
-		String textFound = "";			
-		
-		String[] lines = strPagesWikiFile.split("\\r\\n");
-		
-		//finding page with specific title
-		//Pattern p = Pattern.compile("<page>.*<title>" + l.getLemma() + "</title>.*</page>");
-		Pattern pTitle = Pattern.compile("<title>"+ l.getLemma() + "</title>");
-		Pattern pTextStart = Pattern.compile("<text");
-		Pattern pTextEnd = Pattern.compile("</text>");
-		Boolean pageFound = false;
-		Boolean textStartFound = false;
-		Boolean textEndFound = false;
-		
-		for(int i=0;i<lines.length;i++)
-		{
-			if(!pageFound)
-			{
-				Matcher m = pTitle.matcher(lines[i]);			
-				String titleFound = "";			
-				while (m.find()) {
-					titleFound = m.group();
-				}
-				if(titleFound!="")
-					pageFound=true;
-			}	
-			else if(!textStartFound)
-			{
-				Matcher m = pTextStart.matcher(lines[i]);
-				while (m.find()) {
-					textStartFound = true;
-				}
-				if(textStartFound)
-				{
-					textFound += lines[i] + "\r\n";
-				}
-			}
-			else if(!textEndFound)
-			{
-				Matcher m = pTextEnd.matcher(lines[i]);
-				while (m.find()) {
-					textEndFound = true;
-				}
-				if(textEndFound)
-				{
-					textFound += lines[i];
-					break;
-				}
-				else
-				{
-					textFound += lines[i] + "\r\n";
-				}
+				//abstract is the 2nd item of splitted line
+				linkAbstract = parts[1];
 			}
 		}
+		l.setArticleAbstract(linkAbstract);;
+	}	
 		
-		
-		if(textFound!="")
-		{
-			l.setText(textFound);
-		}
-		else
-		{
-			l.setText("");
-		}	
-	}
 		
 	public static String getOutput(List<Sentence> sentences)
 	{
@@ -322,7 +262,7 @@ public class executing {
 				strResult+="<dblnk>" + l.getDbLnk() + "</dblnk>";
 				strResult+="<abstract>" + l.getArticleAbstract() + "</abstract>";
 				strResult+="<type>" + l.getType() + "</type>";
-				strResult+="<vc>" + l.getSyntax() + "</vc>";
+				strResult+="<vc>" + "Atr" + "</vc>";
 				
 				strResult+="</link>";
 			}
@@ -335,5 +275,147 @@ public class executing {
 		
 		return strResult;
 	}
-
+	
+	/**
+	 * divides one big file into many temp files - one file per each wiki page
+	 * */
+	private static List<Path> inputPreprocessing(String fileName)
+	{
+		List<Path> resultList=new ArrayList<Path>();
+		titleWikiPages = new Hashtable<String, String>();
+		try
+		{
+			Date d = new Date();
+			long start = d.getTime();
+			
+			//check if directories exists
+			String parsingDir = "data/output";
+			File directory = new File(parsingDir);
+			if(!(directory.exists()))
+			{
+				directory.mkdir();
+			}
+			
+			//check if directory exists
+			parsingDir = "data/input";
+			directory = new File(parsingDir);
+			if(!(directory.exists()))
+			{
+				directory.mkdir();
+			}
+					
+			//parse input file
+			BufferedReader br = new BufferedReader(new FileReader(fileName));
+			String line="";
+			//read file line by line
+			//sorting by pages
+			//one wiki page
+			String page = "";
+			String pageTitle = ""; 
+			String pageInfobox="";
+			String pageText="";
+			boolean pageFound =false;
+			int pagesCount = 0;
+			while ((line = br.readLine()) != null && pagesCount<1000) 
+			{
+			   line=line.trim();
+			   if(line.contains("<page>"))
+			   {
+				   pageFound = true;
+				   //page+=line + "\r\n";
+			   }
+			   else if(pageFound && line.contains("</page>"))
+			   {
+				   if(pageText.replace("\r\n", "")!="")
+				   {
+					   page+= "TITLE: " + pageTitle + "\r\n";
+					   page+= "INFOBOX: " + pageInfobox + "\r\n\r\n";
+					   page+= pageText;
+					   //page+=line;
+					   
+					   String fullFilePath=parsingDir+ "/pg_" + Integer.toString(resultList.size() + 1) + ".txt";
+					   if(!(new File(fullFilePath)).exists())
+					   {
+						   saveAsFile(page, fullFilePath);
+					   }
+					   resultList.add(Paths.get(fullFilePath));
+					   titleWikiPages.put(pageTitle, fullFilePath);
+				   }
+				   page="";
+				   pageTitle="";
+				   pageInfobox="";
+				   pageFound = false;
+				   pagesCount++;
+			   }
+			   //get the title
+			   else if(pageFound && line.contains("<title>"))
+			   {
+				   pageTitle = line.replace("<title>", "").replace("</title>", "");
+				   //we do not want to use configuration pages such as MediaWiki or Upload log
+				   if(pageTitle.contains(":"))
+				   {
+					   pageTitle="";
+					   page="";
+					   pageText="";
+					   pageFound=false;
+				   }
+			   }
+			   else if(pageFound && line.contains("{{Infobox"))
+			   {
+				   pageInfobox = line.split("\\{\\{Infobox")[1];
+				   pageInfobox = pageInfobox.trim();
+			   }
+			   else if(pageFound)
+			   {
+				   if(line.contains("==Externé odkazy=="))
+						break;
+				
+				   else if(line.length()>0 && line!="\r\n" 
+						   && !line.startsWith("==") 
+						   && !line.startsWith("{") 
+						   && !line.startsWith("}") 
+						   && !line.startsWith("|") 
+						   && !line.startsWith("&lt;") 
+						   && !line.startsWith("#")
+						   && !line.startsWith("*")
+						   && !line.startsWith("<")
+						   && !line.startsWith("[[Kategória:")
+						   && !line.startsWith("Image:")
+						   && !line.startsWith(":")
+						   && !line.startsWith("!")
+						   && !line.startsWith(";"))
+					{
+					   
+					   if(!line.endsWith("\r\n"))
+						   pageText+=line + "\r\n";
+					   else
+						   pageText+=line;
+					}
+				}
+				   
+			}
+			br.close();
+			
+			long end = (new Date()).getTime();
+			long span = end-start;
+			
+			System.out.print(span);
+			System.out.println(" milisec - preprocessing");
+		}
+		catch(Exception ex)
+		{
+			System.out.println(ex.getMessage());
+		}
+		return resultList;
+	}
+	
+	/**save String content as file specified by filePath
+	 * @throws IOException 
+	 * */
+	private static void saveAsFile(String content, String filePath) throws IOException
+	{
+		Path file = Paths.get(filePath);
+		byte[] buf = content.getBytes("UTF-8");
+		Files.write(file, buf);
+	}
 }
